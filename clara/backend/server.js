@@ -23,9 +23,17 @@ app.use('/api/patient', patientRoutes);
 app.use('/api/reminders', reminderRoutes);
 app.use('/api/clara', claraRoutes);
 
+app.post("/api/chat", (req, res) => {
+  const { message } = req.body;
+
+  res.json({
+    reply: "You said: " + message,
+  });
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'Clara backend is running ', timestamp: new Date().toISOString() });
+  res.json({ status: 'Clara backend is running ✅', timestamp: new Date().toISOString() });
 });
 
 // Error handler
