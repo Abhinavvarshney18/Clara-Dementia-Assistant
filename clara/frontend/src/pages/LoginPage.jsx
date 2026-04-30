@@ -1,116 +1,99 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Eye, EyeOff, HeartPulse, Lock, Mail } from 'lucide-react'
+import { Heart, Eye, EyeOff, Mail, Lock } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
-import api, { getApiError } from '../utils/api'
+import api from '../utils/api'
 
 export default function LoginPage() {
   const { login } = useAuth()
   const navigate = useNavigate()
   const [form, setForm] = useState({ email: '', password: '' })
-  const [showPassword, setShowPassword] = useState(false)
+  const [showPwd, setShowPwd] = useState(false)
   const [loading, setLoading] = useState(false)
 
-  const handleChange = (event) => {
-    const { name, value } = event.target
-    setForm((current) => ({ ...current, [name]: value }))
-  }
-
-  const handleSubmit = async (event) => {
-    event.preventDefault()
+  const handleSubmit = async (e) => {
+    e.preventDefault()
     setLoading(true)
-
     try {
-      const { data } = await api.post('/auth/login', form)
+      const { data } = await api.post('/login', form)
       login(data.user, data.token)
-      toast.success(`Welcome back, ${data.user.name}.`)
+      toast.success(`Welcome back, ${data.user.name}! 💙`)
       navigate(data.user.role === 'patient' ? '/dashboard' : '/caregiver')
-    } catch (error) {
-      toast.error(getApiError(error, 'Login failed. Please check your details.'))
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Login failed. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="auth-page">
-      <div className="auth-grid">
-        <aside className="auth-story">
-          <Link className="brand-lockup" to="/">
-            <div className="brand-mark">
-              <HeartPulse size={22} />
-            </div>
-            <div>
-              <p className="brand-name">Clara</p>
-              <p className="brand-subtitle">Care assistant</p>
-            </div>
-          </Link>
-          <div>
-            <h1>Welcome back.</h1>
-            <p>Open your Clara workspace to check reminders, talk with Clara, and keep care details in one place.</p>
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center px-4">
+      <div className="w-full max-w-md">
+        {/* Logo */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl shadow-lg mb-4 clara-pulse">
+            <Heart className="w-8 h-8 text-white" fill="white" />
           </div>
-          <p>Private by default. Built for simple daily routines.</p>
-        </aside>
+          <h1 className="text-3xl font-bold text-slate-800">Welcome back</h1>
+          <p className="text-slate-500 mt-1">Sign in to continue with Clara</p>
+        </div>
 
-        <main className="auth-card">
-          <p className="eyebrow">Account access</p>
-          <h2>Sign in to Clara</h2>
-          <p>Use the email and password you created for your patient or caregiver account.</p>
-
-          <form onSubmit={handleSubmit}>
-            <label className="field">
-              <span className="field-label">Email address</span>
-              <span className="input-wrap">
-                <Mail size={18} />
+        <div className="card shadow-xl border-0">
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div>
+              <label className="label">Email address</label>
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-3.5 w-5 h-5 text-slate-400" />
                 <input
-                  className="input with-icon"
+                  className="input pl-11"
                   type="email"
-                  name="email"
-                  placeholder="you@example.com"
+                  placeholder="your@email.com"
                   value={form.email}
-                  onChange={handleChange}
-                  autoComplete="email"
+                  onChange={e => setForm({ ...form, email: e.target.value })}
                   required
                 />
-              </span>
-            </label>
+              </div>
+            </div>
 
-            <label className="field">
-              <span className="field-label">Password</span>
-              <span className="input-wrap">
-                <Lock size={18} />
+            <div>
+              <label className="label">Password</label>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-3.5 w-5 h-5 text-slate-400" />
                 <input
-                  className="input with-icon"
-                  type={showPassword ? 'text' : 'password'}
-                  name="password"
+                  className="input pl-11 pr-11"
+                  type={showPwd ? 'text' : 'password'}
                   placeholder="Your password"
                   value={form.password}
-                  onChange={handleChange}
-                  autoComplete="current-password"
+                  onChange={e => setForm({ ...form, password: e.target.value })}
                   required
                 />
                 <button
-                  className="password-toggle"
                   type="button"
-                  onClick={() => setShowPassword((value) => !value)}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  onClick={() => setShowPwd(!showPwd)}
+                  className="absolute right-3.5 top-3.5 text-slate-400 hover:text-slate-600"
                 >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  {showPwd ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
-              </span>
-            </label>
+              </div>
+            </div>
 
-            <button className="button primary" type="submit" disabled={loading}>
-              {loading ? 'Signing in...' : 'Sign in'}
+            <button type="submit" disabled={loading} className="btn-primary w-full mt-2">
+              {loading ? 'Signing in…' : 'Sign In'}
             </button>
           </form>
 
-          <p className="auth-link">
-            New to Clara? <Link to="/signup">Create an account</Link>
+          <p className="text-center text-slate-500 text-sm mt-6">
+            Don't have an account?{' '}
+            <Link to="/signup" className="text-indigo-600 hover:text-indigo-700 font-semibold">
+              Create one free
+            </Link>
           </p>
-          <Link className="back-link" to="/">Back to home</Link>
-        </main>
+        </div>
+
+        <p className="text-center text-xs text-slate-400 mt-6">
+          <Link to="/" className="hover:text-indigo-500 transition-colors">← Back to home</Link>
+        </p>
       </div>
     </div>
   )
