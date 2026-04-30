@@ -1,211 +1,264 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import {
+  AlertTriangle,
+  Bell,
+  CalendarCheck,
+  CheckCircle2,
+  Clock,
+  Frown,
+  HeartPulse,
+  Meh,
+  MessageCircle,
+  Smile,
+  SmilePlus,
+  Sparkles,
+} from 'lucide-react'
+import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
-import { Heart, LayoutDashboard, MessageCircle, Bell, User, LogOut, AlertTriangle, Clock, CheckCircle } from 'lucide-react'
-import api from '../utils/api'
+import api, { getApiError } from '../utils/api'
+
+const moodOptions = [
+  { value: 'happy', label: 'Happy', icon: SmilePlus },
+  { value: 'calm', label: 'Calm', icon: Smile },
+  { value: 'anxious', label: 'Anxious', icon: HeartPulse },
+  { value: 'confused', label: 'Confused', icon: Meh },
+  { value: 'sad', label: 'Sad', icon: Frown },
+]
+
+function formatTime(value) {
+  if (!value) return 'Any time'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
 
 export default function PatientDashboard() {
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
   const navigate = useNavigate()
   const [reminders, setReminders] = useState([])
-  const [selectedMood, setSelectedMood] = useState(null)
+  const [moods, setMoods] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [selectedMood, setSelectedMood] = useState('')
+  const [alerting, setAlerting] = useState(false)
 
   useEffect(() => {
-    fetchReminders()
+    let active = true
+
+    async function loadDashboard() {
+      try {
+        const [reminderRes, moodRes] = await Promise.all([
+          api.get('/reminders/today'),
+          api.get('/patient/mood'),
+        ])
+        if (!active) return
+        setReminders(reminderRes.data)
+        setMoods(moodRes.data)
+      } catch (error) {
+        toast.error(getApiError(error, 'Could not load dashboard data.'))
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+
+    loadDashboard()
+    return () => {
+      active = false
+    }
   }, [])
 
-  const fetchReminders = async () => {
+  const stats = useMemo(() => {
+    const done = reminders.filter((reminder) => reminder.is_completed).length
+    return {
+      total: reminders.length,
+      done,
+      pending: reminders.length - done,
+    }
+  }, [reminders])
+
+  const logMood = async (mood) => {
+    setSelectedMood(mood)
     try {
-      const { data } = await api.get('/reminders')
-      setReminders(data)
-    } catch (err) {
-      console.error(err)
+      await api.post('/patient/mood', { mood })
+      toast.success('Mood saved for today.')
+      const { data } = await api.get('/patient/mood')
+      setMoods(data)
+    } catch (error) {
+      toast.error(getApiError(error, 'Could not save mood.'))
     }
   }
 
-  const handleLogout = () => {
-    logout()
-    navigate('/')
+  const completeReminder = async (reminderId) => {
+    try {
+      await api.put(`/reminders/${reminderId}/complete`)
+      setReminders((current) =>
+        current.map((reminder) =>
+          reminder.id === reminderId ? { ...reminder, is_completed: 1 } : reminder,
+        ),
+      )
+      toast.success('Reminder completed.')
+    } catch (error) {
+      toast.error(getApiError(error, 'Could not update reminder.'))
+    }
   }
 
-  const today = new Date().toLocaleDateString('en-US', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-  })
+  const sendEmergencyAlert = async () => {
+    setAlerting(true)
+    try {
+      await api.post('/patient/emergency', {
+        message: `${user?.name || 'Patient'} needs help from a caregiver.`,
+      })
+      toast.success('Emergency alert sent to caregiver.')
+    } catch (error) {
+      toast.error(getApiError(error, 'Could not send alert.'))
+    } finally {
+      setAlerting(false)
+    }
+  }
 
-  const hour = new Date().getHours()
-  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
-
-  const pending = reminders.filter(r => !r.completed).length
-  const completed = reminders.filter(r => r.completed).length
-  const moods = ['😊 Happy', '😌 Calm', '😰 Anxious', '😕 Confused', '😢 Sad']
-
-  const NavItem = ({ icon, label, path, active }) => (
-    <button
-      onClick={() => navigate(path)}
-      style={{
-        padding: '10px 14px', borderRadius: '8px',
-        background: active ? 'rgba(255,255,255,0.12)' : 'transparent',
-        color: active ? 'white' : 'rgba(255,255,255,0.5)',
-        fontSize: '13px', cursor: 'pointer',
-        display: 'flex', alignItems: 'center', gap: '10px',
-        border: 'none', fontFamily: "'DM Sans', sans-serif",
-        width: '100%', marginBottom: '4px', textAlign: 'left'
-      }}
-    >
-      {icon} {label}
-    </button>
-  )
+  const recentMood = moods[0]?.mood || selectedMood || 'not logged'
 
   return (
-    <div style={{
-      display: 'grid', gridTemplateColumns: '220px 1fr',
-      minHeight: '100vh', fontFamily: "'DM Sans', sans-serif", background: '#f5f3ef'
-    }}>
-
-      {/* SIDEBAR */}
-      <div style={{ background: '#1a1a2e', display: 'flex', flexDirection: 'column', padding: '32px 20px', minHeight: '100vh' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'white', fontWeight: '500', fontSize: '16px', marginBottom: '48px' }}>
-          <div style={{ width: '28px', height: '28px', background: 'white', borderRadius: '7px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Heart size={14} color="#1a1a2e" fill="#1a1a2e" />
-          </div>
-          Clara
+    <div className="page-stack">
+      <section className="page-head">
+        <div>
+          <p className="eyebrow">Today</p>
+          <h2>Hello, {user?.name?.split(' ')[0] || 'friend'}.</h2>
+          <p>
+            Your care plan for today is ready. Check your reminders, save how you feel,
+            and open Clara whenever you need a calm conversation.
+          </p>
         </div>
-
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          <NavItem icon={<LayoutDashboard size={14} />} label="Home" path="/dashboard" active={true} />
-          <NavItem icon={<MessageCircle size={14} />} label="Talk to Clara" path="/chat" />
-          <NavItem icon={<Bell size={14} />} label="Reminders" path="/reminders" />
-          <NavItem icon={<User size={14} />} label="My Profile" path="/profile" />
-        </div>
-
-        <button
-          onClick={handleLogout}
-          style={{
-            padding: '10px 14px', borderRadius: '8px',
-            background: 'rgba(192,57,43,0.15)', color: '#e74c3c',
-            fontSize: '13px', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', gap: '10px',
-            border: 'none', fontFamily: "'DM Sans', sans-serif", width: '100%'
-          }}
-        >
-          <LogOut size={14} /> Sign out
+        <button className="button danger" type="button" onClick={sendEmergencyAlert} disabled={alerting}>
+          <AlertTriangle size={17} />
+          {alerting ? 'Sending...' : 'Emergency alert'}
         </button>
-      </div>
+      </section>
 
-      {/* MAIN */}
-      <div style={{ padding: '40px 48px', overflowY: 'auto' }}>
-
-        {/* Greeting */}
-        <div style={{ marginBottom: '32px' }}>
-          <div style={{ fontSize: '12px', color: '#999', letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: '6px' }}>
-            {greeting}
+      <section className="dashboard-grid">
+        <article className="metric-card">
+          <div className="stat-head">
+            <p className="card-kicker">Pending</p>
+            <div className="metric-icon coral"><Clock size={20} /></div>
           </div>
-          <div style={{ fontFamily: 'Georgia, serif', fontSize: '36px', color: '#1a1a2e', fontWeight: '500' }}>
-            Welcome back, {user?.name} 👋
+          <p className="metric-value">{loading ? '-' : stats.pending}</p>
+          <p className="empty-copy">Reminders still open today.</p>
+        </article>
+
+        <article className="metric-card">
+          <div className="stat-head">
+            <p className="card-kicker">Completed</p>
+            <div className="metric-icon"><CheckCircle2 size={20} /></div>
           </div>
-          <div style={{ fontSize: '13px', color: '#aaa', marginTop: '4px' }}>{today}</div>
-        </div>
+          <p className="metric-value">{loading ? '-' : stats.done}</p>
+          <p className="empty-copy">Tasks finished with Clara.</p>
+        </article>
 
-        {/* Emergency Alert */}
-        <div style={{
-          background: '#fff3cd', border: '1px solid #f5c842', borderRadius: '10px',
-          padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '8px',
-          fontSize: '13px', color: '#856404', marginBottom: '28px', cursor: 'pointer'
-        }}>
-          <AlertTriangle size={14} />
-          Emergency alert — tap to contact caregiver immediately
-        </div>
+        <article className="metric-card">
+          <div className="stat-head">
+            <p className="card-kicker">Mood</p>
+            <div className="metric-icon blue"><Sparkles size={20} /></div>
+          </div>
+          <p className="metric-value" style={{ fontSize: '1.7rem', textTransform: 'capitalize' }}>
+            {recentMood}
+          </p>
+          <p className="empty-copy">Latest feeling check-in.</p>
+        </article>
+      </section>
 
-        {/* Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '28px' }}>
-          {[
-            { label: 'Pending', value: pending, sub: 'reminders left', icon: <Clock size={14} color="#f5a623" /> },
-            { label: 'Completed', value: completed, sub: 'done today', icon: <CheckCircle size={14} color="#4caf7d" /> },
-            { label: 'Total today', value: reminders.length, sub: 'scheduled', icon: <Bell size={14} color="#888" /> },
-          ].map((stat, i) => (
-            <div key={i} style={{ background: 'white', borderRadius: '14px', padding: '20px', border: '1px solid #eee' }}>
-              <div style={{ fontSize: '11px', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                {stat.icon} {stat.label}
-              </div>
-              <div style={{ fontSize: '28px', fontWeight: '500', color: '#1a1a2e' }}>{stat.value}</div>
-              <div style={{ fontSize: '11px', color: '#bbb', marginTop: '4px' }}>{stat.sub}</div>
+      <section className="summary-grid">
+        <article className="panel">
+          <div className="stat-head">
+            <div>
+              <p className="card-kicker">Reminders</p>
+              <h3>Next items today</h3>
             </div>
-          ))}
-        </div>
-
-        {/* Mood + Reminders Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-
-          {/* Mood */}
-          <div style={{ background: 'white', borderRadius: '14px', padding: '24px', border: '1px solid #eee' }}>
-            <div style={{ fontSize: '13px', fontWeight: '500', color: '#1a1a2e', marginBottom: '16px' }}>
-              How are you feeling?
-            </div>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              {moods.map(mood => (
-                <button
-                  key={mood}
-                  onClick={() => setSelectedMood(mood)}
-                  style={{
-                    padding: '6px 14px', borderRadius: '20px',
-                    border: `1.5px solid ${selectedMood === mood ? '#1a1a2e' : '#e0ddd8'}`,
-                    background: selectedMood === mood ? '#1a1a2e' : 'white',
-                    color: selectedMood === mood ? 'white' : '#666',
-                    fontSize: '12px', fontFamily: "'DM Sans', sans-serif", cursor: 'pointer'
-                  }}
-                >
-                  {mood}
-                </button>
-              ))}
-            </div>
+            <button className="button ghost" type="button" onClick={() => navigate('/reminders')}>
+              View all
+            </button>
           </div>
 
-          {/* Reminders */}
-          <div style={{ background: 'white', borderRadius: '14px', padding: '24px', border: '1px solid #eee' }}>
-            <div style={{ fontSize: '13px', fontWeight: '500', color: '#1a1a2e', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              Today's Reminders
-              <span onClick={() => navigate('/reminders')} style={{ fontSize: '11px', color: '#888', cursor: 'pointer' }}>
-                See all →
-              </span>
+          {loading ? (
+            <p className="empty-copy">Loading reminders...</p>
+          ) : reminders.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon"><Bell size={24} /></div>
+              <p className="empty-title">No reminders yet</p>
+              <p className="empty-copy">Add a reminder so Clara can help guide the day.</p>
             </div>
-            {reminders.length === 0 ? (
-              <div style={{ fontSize: '13px', color: '#bbb', textAlign: 'center', padding: '20px 0' }}>
-                No reminders for today
-              </div>
-            ) : (
-              reminders.slice(0, 3).map((r, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', borderBottom: '1px solid #f5f5f5' }}>
-                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: r.completed ? '#4caf7d' : '#f5a623', flexShrink: 0 }} />
-                  <div style={{ fontSize: '13px', color: '#444', flex: 1 }}>{r.title}</div>
-                  <div style={{ fontSize: '11px', color: '#bbb' }}>{r.time}</div>
+          ) : (
+            reminders.slice(0, 5).map((reminder) => (
+              <div className="row" key={reminder.id}>
+                <span className={`dot ${reminder.is_completed ? 'done' : ''}`} />
+                <div className="row-main">
+                  <strong>{reminder.title}</strong>
+                  <span>{reminder.description || reminder.type}</span>
                 </div>
-              ))
-            )}
-          </div>
-        </div>
+                <span className="row-time">{formatTime(reminder.scheduled_time)}</span>
+                {!reminder.is_completed && (
+                  <button
+                    className="icon-button"
+                    type="button"
+                    onClick={() => completeReminder(reminder.id)}
+                    aria-label={`Complete ${reminder.title}`}
+                  >
+                    <CheckCircle2 size={18} />
+                  </button>
+                )}
+              </div>
+            ))
+          )}
+        </article>
 
-        {/* Talk to Clara CTA */}
-        <div style={{
-          background: '#1a1a2e', borderRadius: '14px', padding: '24px',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between'
-        }}>
-          <div style={{ color: 'white' }}>
-            <div style={{ fontSize: '15px', fontWeight: '500', marginBottom: '4px' }}>Talk to Clara</div>
-            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>I'm here to listen and help anytime 💙</div>
+        <article className="panel">
+          <div>
+            <p className="card-kicker">Feeling check</p>
+            <h3>How are you feeling?</h3>
           </div>
-          <button
-            onClick={() => navigate('/chat')}
-            style={{
-              padding: '10px 20px', background: 'white', color: '#1a1a2e',
-              border: 'none', borderRadius: '8px', fontSize: '13px',
-              fontFamily: "'DM Sans', sans-serif", fontWeight: '500', cursor: 'pointer'
-            }}
-          >
-            Start chatting →
-          </button>
-        </div>
 
-      </div>
+          <div className="mood-grid">
+            {moodOptions.map((mood) => {
+              const MoodIcon = mood.icon
+              return (
+                <button
+                  key={mood.value}
+                  className={`mood-button ${selectedMood === mood.value || moods[0]?.mood === mood.value ? 'active' : ''}`}
+                  type="button"
+                  onClick={() => logMood(mood.value)}
+                >
+                  <MoodIcon size={22} />
+                  <span>{mood.label}</span>
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="care-callout">
+            <p className="card-kicker">Clara</p>
+            <h3>Need someone to talk to?</h3>
+            <p>Clara can help with reassurance, reminders, orientation, and simple next steps.</p>
+            <button className="button blue" type="button" onClick={() => navigate('/chat')}>
+              <MessageCircle size={17} />
+              Talk to Clara
+            </button>
+          </div>
+        </article>
+      </section>
+
+      <section className="panel">
+        <div className="stat-head">
+          <div>
+            <p className="card-kicker">Daily plan</p>
+            <h3>Recommended focus</h3>
+          </div>
+          <CalendarCheck size={24} color="#176b5b" />
+        </div>
+        <div className="action-row">
+          <span className="tag">Take medicines on time</span>
+          <span className="tag blue">Drink water regularly</span>
+          <span className="tag coral">Call caregiver if worried</span>
+        </div>
+      </section>
     </div>
   )
 }

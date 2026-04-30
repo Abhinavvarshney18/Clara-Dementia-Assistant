@@ -1,208 +1,183 @@
-import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { HeartPulse, RotateCcw, Send, Sparkles, Trash2 } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
-import { Heart, LayoutDashboard, MessageCircle, Bell, User, LogOut, Send } from 'lucide-react'
-import api from '../utils/api'
+import api, { getApiError } from '../utils/api'
+
+const quickPrompts = [
+  'I feel confused right now',
+  'What should I do next?',
+  'Remind me to drink water',
+  'I am feeling lonely',
+]
+
+function normalizeHistory(rows, name) {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return [
+      {
+        role: 'assistant',
+        content: `Hello ${name || 'there'}. I am Clara. I can help you feel oriented, remember simple tasks, or stay calm for a moment.`,
+      },
+    ]
+  }
+
+  return rows.map((row) => ({
+    role: row.role,
+    content: row.message,
+  }))
+}
 
 export default function ClaraChat() {
-  const { user, logout } = useAuth()
-  const navigate = useNavigate()
-  const [messages, setMessages] = useState([
-    {
-      role: 'assistant',
-      content: `Hello ${user?.name?.split(' ')[0] || ''}! I'm Clara, your AI companion. How are you feeling today? 💙`
-    }
-  ])
+  const { user } = useAuth()
+  const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [sending, setSending] = useState(false)
   const bottomRef = useRef(null)
+
+  const firstName = user?.name?.split(' ')[0]
+
+  useEffect(() => {
+    let active = true
+
+    async function loadHistory() {
+      setLoading(true)
+      try {
+        const { data } = await api.get('/clara/history')
+        if (active) setMessages(normalizeHistory(data, firstName))
+      } catch (error) {
+        if (active) setMessages(normalizeHistory([], firstName))
+        toast.error(getApiError(error, 'Could not load Clara history.'))
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+
+    loadHistory()
+    return () => {
+      active = false
+    }
+  }, [firstName])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [messages, sending])
 
-  const handleSend = async () => {
-    if (!input.trim()) return
-    const userMsg = { role: 'user', content: input }
-    setMessages(prev => [...prev, userMsg])
+  const sendMessage = async (text = input) => {
+    const message = text.trim()
+    if (!message || sending) return
+
+    setMessages((current) => [...current, { role: 'user', content: message }])
     setInput('')
-    setLoading(true)
+    setSending(true)
+
     try {
-      const { data } = await api.post('/clara/chat', {
-        message: input,
-        history: messages
-      })
-      setMessages(prev => [...prev, { role: 'assistant', content: data.reply }])
-    } catch (err) {
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, I had trouble responding. Please try again.' }])
+      const { data } = await api.post('/clara/chat', { message })
+      setMessages((current) => [...current, { role: 'assistant', content: data.reply }])
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          role: 'assistant',
+          content: 'I had trouble connecting just now. Please try again in a moment, or contact your caregiver if this is urgent.',
+        },
+      ])
+      toast.error(getApiError(error, 'Clara could not respond.'))
     } finally {
-      setLoading(false)
+      setSending(false)
     }
   }
 
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
+  const clearHistory = async () => {
+    try {
+      await api.delete('/clara/history')
+      setMessages(normalizeHistory([], firstName))
+      toast.success('Conversation cleared.')
+    } catch (error) {
+      toast.error(getApiError(error, 'Could not clear conversation.'))
     }
   }
 
-  const handleLogout = () => {
-    logout()
-    navigate('/')
+  const handleSubmit = (event) => {
+    event.preventDefault()
+    sendMessage()
   }
-
-  const NavItem = ({ icon, label, path, active }) => (
-    <button
-      onClick={() => navigate(path)}
-      style={{
-        padding: '10px 14px', borderRadius: '8px',
-        background: active ? 'rgba(255,255,255,0.12)' : 'transparent',
-        color: active ? 'white' : 'rgba(255,255,255,0.5)',
-        fontSize: '13px', cursor: 'pointer',
-        display: 'flex', alignItems: 'center', gap: '10px',
-        border: 'none', fontFamily: "'DM Sans', sans-serif",
-        width: '100%', marginBottom: '4px', textAlign: 'left'
-      }}
-    >
-      {icon} {label}
-    </button>
-  )
 
   return (
-    <div style={{
-      display: 'grid', gridTemplateColumns: '220px 1fr',
-      height: '100vh', fontFamily: "'DM Sans', sans-serif", background: '#f5f3ef'
-    }}>
-
-      {/* SIDEBAR */}
-      <div style={{ background: '#1a1a2e', display: 'flex', flexDirection: 'column', padding: '32px 20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'white', fontWeight: '500', fontSize: '16px', marginBottom: '48px' }}>
-          <div style={{ width: '28px', height: '28px', background: 'white', borderRadius: '7px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Heart size={14} color="#1a1a2e" fill="#1a1a2e" />
-          </div>
-          Clara
+    <div className="page-stack">
+      <section className="page-head">
+        <div>
+          <p className="eyebrow">Companion</p>
+          <h2>Talk to Clara</h2>
+          <p>
+            Clara responds with calm, practical support. For emergencies or medical decisions,
+            contact a caregiver or healthcare professional.
+          </p>
         </div>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          <NavItem icon={<LayoutDashboard size={14} />} label="Home" path="/dashboard" />
-          <NavItem icon={<MessageCircle size={14} />} label="Talk to Clara" path="/chat" active={true} />
-          <NavItem icon={<Bell size={14} />} label="Reminders" path="/reminders" />
-          <NavItem icon={<User size={14} />} label="My Profile" path="/profile" />
-        </div>
-        <button
-          onClick={handleLogout}
-          style={{
-            padding: '10px 14px', borderRadius: '8px',
-            background: 'rgba(192,57,43,0.15)', color: '#e74c3c',
-            fontSize: '13px', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', gap: '10px',
-            border: 'none', fontFamily: "'DM Sans', sans-serif", width: '100%'
-          }}
-        >
-          <LogOut size={14} /> Sign out
-        </button>
-      </div>
+      </section>
 
-      {/* CHAT AREA */}
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-
-        {/* Header */}
-        <div style={{
-          padding: '20px 32px', background: 'white',
-          borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', gap: '12px'
-        }}>
-          <div style={{
-            width: '36px', height: '36px', background: '#1a1a2e',
-            borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center'
-          }}>
-            <Heart size={14} color="white" fill="white" />
-          </div>
-          <div>
-            <div style={{ fontSize: '15px', fontWeight: '500', color: '#1a1a2e' }}>Clara</div>
-            <div style={{ fontSize: '11px', color: '#4caf7d' }}>● Online — always here for you</div>
-          </div>
-        </div>
-
-        {/* Messages */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {messages.map((msg, i) => (
-            <div key={i} style={{
-              display: 'flex',
-              justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start'
-            }}>
-              {msg.role === 'assistant' && (
-                <div style={{
-                  width: '28px', height: '28px', background: '#1a1a2e',
-                  borderRadius: '50%', display: 'flex', alignItems: 'center',
-                  justifyContent: 'center', marginRight: '8px', flexShrink: 0, alignSelf: 'flex-end'
-                }}>
-                  <Heart size={12} color="white" fill="white" />
-                </div>
-              )}
-              <div style={{
-                maxWidth: '65%', padding: '12px 16px', borderRadius: msg.role === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-                background: msg.role === 'user' ? '#1a1a2e' : 'white',
-                color: msg.role === 'user' ? 'white' : '#1a1a2e',
-                fontSize: '14px', lineHeight: '1.6',
-                border: msg.role === 'assistant' ? '1px solid #eee' : 'none'
-              }}>
-                {msg.content}
-              </div>
+      <section className="chat-shell">
+        <header className="chat-header">
+          <div className="chat-title">
+            <div className="brand-mark">
+              <HeartPulse size={22} />
             </div>
-          ))}
+            <div>
+              <h2>Clara is online</h2>
+              <p>Warm support, reminders, and simple grounding.</p>
+            </div>
+          </div>
+          <button className="button ghost" type="button" onClick={clearHistory}>
+            <Trash2 size={16} />
+            Clear
+          </button>
+        </header>
 
-          {loading && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{
-                width: '28px', height: '28px', background: '#1a1a2e',
-                borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center'
-              }}>
-                <Heart size={12} color="white" fill="white" />
+        <div className="messages">
+          {loading ? (
+            <div className="message-row">
+              <div className="message-bubble">Loading your conversation...</div>
+            </div>
+          ) : (
+            messages.map((message, index) => (
+              <div className={`message-row ${message.role === 'user' ? 'user' : ''}`} key={`${message.role}-${index}`}>
+                {message.role !== 'user' && <HeartPulse size={22} color="#176b5b" />}
+                <div className="message-bubble">{message.content}</div>
               </div>
-              <div style={{
-                padding: '12px 16px', background: 'white', borderRadius: '18px 18px 18px 4px',
-                border: '1px solid #eee', fontSize: '14px', color: '#aaa'
-              }}>
-                Clara is typing...
-              </div>
+            ))
+          )}
+
+          {sending && (
+            <div className="message-row">
+              <Sparkles size={22} color="#176b5b" />
+              <div className="message-bubble">Clara is thinking...</div>
             </div>
           )}
           <div ref={bottomRef} />
         </div>
 
-        {/* Input */}
-        <div style={{
-          padding: '16px 32px', background: 'white',
-          borderTop: '1px solid #eee', display: 'flex', gap: '12px', alignItems: 'center'
-        }}>
+        <form className="chat-form" onSubmit={handleSubmit}>
           <input
-            type="text"
+            className="input"
             value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Type a message..."
-            style={{
-              flex: 1, padding: '12px 16px', border: '1.5px solid #e0ddd8',
-              borderRadius: '24px', fontSize: '14px',
-              fontFamily: "'DM Sans', sans-serif", outline: 'none',
-              background: '#f5f3ef', color: '#1a1a2e'
-            }}
+            onChange={(event) => setInput(event.target.value)}
+            placeholder="Type your message to Clara"
+            disabled={sending}
           />
-          <button
-            onClick={handleSend}
-            disabled={loading || !input.trim()}
-            style={{
-              width: '44px', height: '44px', borderRadius: '50%',
-              background: input.trim() ? '#1a1a2e' : '#e0ddd8',
-              border: 'none', cursor: input.trim() ? 'pointer' : 'not-allowed',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0, transition: 'background 0.2s'
-            }}
-          >
-            <Send size={16} color="white" />
+          <button className="button primary" type="submit" disabled={sending || !input.trim()}>
+            {sending ? <RotateCcw size={17} /> : <Send size={17} />}
+            Send
           </button>
+        </form>
+
+        <div className="quick-prompts">
+          {quickPrompts.map((prompt) => (
+            <button key={prompt} type="button" onClick={() => sendMessage(prompt)} disabled={sending}>
+              {prompt}
+            </button>
+          ))}
         </div>
-      </div>
+      </section>
     </div>
   )
 }
