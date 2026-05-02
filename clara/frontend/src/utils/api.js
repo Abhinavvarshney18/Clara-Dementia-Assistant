@@ -1,10 +1,16 @@
 import axios from 'axios'
 
+const BASE_URL = import.meta.env.VITE_API_URL
+  ? import.meta.env.VITE_API_URL.replace(/\/+$/, '') + '/api'
+  : 'https://clara-dementia-assistant-1.onrender.com/api'
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  baseURL: BASE_URL,
   timeout: 20000,
+  withCredentials: true,
 })
 
+// Attach JWT token to every request
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('clara_token')
   if (token) {
@@ -12,15 +18,8 @@ api.interceptors.request.use((config) => {
   }
   return config
 })
-import axios from 'axios';
 
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL + '/api',
-  withCredentials: true,
-});
-
-export default api;
-
+// Handle auth errors globally
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -36,7 +35,12 @@ api.interceptors.response.use(
 )
 
 export function getApiError(error, fallback = 'Something went wrong. Please try again.') {
-  return error.response?.data?.error || error.response?.data?.message || error.message || fallback
+  return (
+    error.response?.data?.error ||
+    error.response?.data?.message ||
+    error.message ||
+    fallback
+  )
 }
 
 export default api
