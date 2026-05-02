@@ -5,10 +5,10 @@ import { useAuth } from '../context/AuthContext'
 import api, { getApiError } from '../utils/api'
 
 const quickPrompts = [
-  'I feel confused right now',
-  'What should I do next?',
-  'Remind me to drink water',
-  'I am feeling lonely',
+  'I have a headache',
+  'I have fever',
+  'I have cold and cough',
+  'I have stomach pain',
 ]
 
 function normalizeHistory(rows, name) {
@@ -16,7 +16,7 @@ function normalizeHistory(rows, name) {
     return [
       {
         role: 'assistant',
-        content: `Hello ${name || 'there'}. I am Clara. I can help you feel oriented, remember simple tasks, or stay calm for a moment.`,
+        content: `Hello ${name || 'there'}. I am Clara. I can help you with mild health concerns, remind you of care routines, or just be here if you need support.`,
       },
     ]
   }
@@ -30,6 +30,7 @@ function normalizeHistory(rows, name) {
 export default function ClaraChat() {
   const { user } = useAuth()
   const [messages, setMessages] = useState([])
+  const [aiStatus, setAiStatus] = useState(null)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
@@ -43,8 +44,14 @@ export default function ClaraChat() {
     async function loadHistory() {
       setLoading(true)
       try {
-        const { data } = await api.get('/clara/history')
-        if (active) setMessages(normalizeHistory(data, firstName))
+        const [historyRes, statusRes] = await Promise.all([
+          api.get('/clara/history'),
+          api.get('/clara/status'),
+        ])
+        if (active) {
+          setMessages(normalizeHistory(historyRes.data, firstName))
+          setAiStatus(statusRes.data)
+        }
       } catch (error) {
         if (active) setMessages(normalizeHistory([], firstName))
         toast.error(getApiError(error, 'Could not load Clara history.'))
@@ -73,7 +80,22 @@ export default function ClaraChat() {
 
     try {
       const { data } = await api.post('/clara/chat', { message })
-      setMessages((current) => [...current, { role: 'assistant', content: data.reply }])
+      setMessages((current) => [
+        ...current,
+        {
+          role: 'assistant',
+          content: data.reply,
+          source: data.source,
+          model: data.model,
+        },
+      ])
+      if (data.source !== 'genai') {
+        setAiStatus((current) => ({
+          ...current,
+          genAiEnabled: false,
+          fallback: 'AI key or API unavailable',
+        }))
+      }
     } catch (error) {
       setMessages((current) => [
         ...current,
@@ -124,7 +146,11 @@ export default function ClaraChat() {
             </div>
             <div>
               <h2>Clara is online</h2>
-              <p>Warm support, reminders, and simple grounding.</p>
+              <p>
+                {aiStatus?.genAiEnabled
+                  ? `Generative AI active${aiStatus.model ? `: ${aiStatus.model}` : ''}`
+                  : 'AI fallback active until API key is valid'}
+              </p>
             </div>
           </div>
           <button className="button ghost" type="button" onClick={clearHistory}>
@@ -142,7 +168,14 @@ export default function ClaraChat() {
             messages.map((message, index) => (
               <div className={`message-row ${message.role === 'user' ? 'user' : ''}`} key={`${message.role}-${index}`}>
                 {message.role !== 'user' && <HeartPulse size={22} color="#176b5b" />}
-                <div className="message-bubble">{message.content}</div>
+                <div className="message-bubble">
+                  {message.content}
+                  {message.role === 'assistant' && message.source && (
+                    <span className="message-meta">
+                      {message.source === 'genai' ? 'GenAI response' : 'AI fallback response'}
+                    </span>
+                  )}
+                </div>
               </div>
             ))
           )}
