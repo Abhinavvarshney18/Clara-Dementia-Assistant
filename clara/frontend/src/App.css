@@ -912,6 +912,18 @@
   background: var(--green);
 }
 
+.message-meta {
+  display: block;
+  width: fit-content;
+  margin-top: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: var(--green-dark);
+  background: #d8efe6;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
 .chat-form {
   display: grid;
   grid-template-columns: 1fr auto;
