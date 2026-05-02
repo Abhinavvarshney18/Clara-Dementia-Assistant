@@ -11,6 +11,8 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 const allowedOrigins = [
+  'https://clara-dementia-assistant.vercel.app',
+  'https://clara-dementia-assistant-git-master-abhinavvarshney18s-projects.vercel.app',
   process.env.FRONTEND_URL,
   'http://localhost:5173',
   'http://127.0.0.1:5173',
@@ -22,10 +24,12 @@ app.use(cors({
       callback(null, true);
       return;
     }
+    console.log('[CORS] Blocked origin:', origin);
     callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
 }));
+
 app.use(express.json());
 
 app.use('/api/auth', authRoutes);
@@ -54,5 +58,5 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`Clara backend running on http://localhost:${PORT}`);
-  console.log(`Health check: http://localhost:${PORT}/api/health`);
+  console.log(`Allowed origins: ${allowedOrigins.join(', ')}`);
 });
